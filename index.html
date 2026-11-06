@@ -6,11 +6,12 @@
 <title>IO Journal Ranker</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: one toolbar over one sortable table; the SJR column carries a scaled bar so magnitude reads before the digits do. */
+/* Layout: a data strip (source year and upload), a toolbar, then one sortable table; the SJR column carries a scaled bar so magnitude reads before the digits do. */
 :root{
   --bg:#f5f6f8; --surface:#ffffff; --ink:#151a22; --ink2:#47505e; --muted:#6f7a8b;
   --line:#e0e4ea; --hover:#f0f3f8; --accent:#25499a; --accent-ink:#ffffff; --accent-soft:#e5ebf8;
-  --bar:#8aa2d6; --info-bg:#eaf0f8; --info-ink:#2c3e5c;
+  --bar:#8aa2d6; --info-bg:#eaf0f8; --info-ink:#2c3e5c; --up:#17714a; --down:#a93a2a;
+  --warn-bg:#f6efdc; --warn-ink:#5d4b13;
   --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
   color-scheme:light;
@@ -19,14 +20,16 @@
   :root:not([data-theme="light"]){
     --bg:#0e1218; --surface:#151a22; --ink:#e7ebf2; --ink2:#a9b2c0; --muted:#8792a3;
     --line:#262d39; --hover:#1b222d; --accent:#8fb0f5; --accent-ink:#0e1218; --accent-soft:#1c2a47;
-    --bar:#4d6cae; --info-bg:#18202e; --info-ink:#b4c3dd;
+    --bar:#4d6cae; --info-bg:#18202e; --info-ink:#b4c3dd; --up:#5fc994; --down:#f0907d;
+    --warn-bg:#262212; --warn-ink:#d9c78a;
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#0e1218; --surface:#151a22; --ink:#e7ebf2; --ink2:#a9b2c0; --muted:#8792a3;
   --line:#262d39; --hover:#1b222d; --accent:#8fb0f5; --accent-ink:#0e1218; --accent-soft:#1c2a47;
-  --bar:#4d6cae; --info-bg:#18202e; --info-ink:#b4c3dd;
+  --bar:#4d6cae; --info-bg:#18202e; --info-ink:#b4c3dd; --up:#5fc994; --down:#f0907d;
+  --warn-bg:#262212; --warn-ink:#d9c78a;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -39,7 +42,12 @@ body{
 .page{max-width:1040px; margin:0 auto; display:flex; flex-direction:column; gap:16px}
 h1{font-size:22px; font-weight:600; letter-spacing:-0.01em; margin:0; text-wrap:balance}
 .sub{margin:4px 0 0; color:var(--ink2); max-width:68ch}
-.note{background:var(--info-bg); color:var(--info-ink); border-radius:6px; padding:10px 12px; font-size:13px; max-width:80ch}
+.strip{background:var(--info-bg); color:var(--info-ink); border-radius:6px; padding:10px 12px; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center}
+.strip .txt{flex:1 1 280px; min-width:0; font-size:13px}
+.strip .btns{display:flex; gap:8px; flex-wrap:wrap}
+.msg{border-radius:6px; padding:10px 12px; font-size:13px; max-width:80ch}
+.msg.ok{background:var(--info-bg); color:var(--info-ink)}
+.msg.warn{background:var(--warn-bg); color:var(--warn-ink)}
 .toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
 .search{flex:1 1 240px; min-width:0}
 .search input{
@@ -52,14 +60,16 @@ select{
 }
 .toggle, .btn{
   font:inherit; color:var(--ink2); background:var(--surface); border:1px solid var(--line);
-  border-radius:6px; padding:9px 12px; cursor:pointer;
+  border-radius:6px; padding:9px 12px; cursor:pointer; display:inline-block;
 }
+.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:500}
 .toggle[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
 .toggle:hover, .btn:hover{border-color:var(--muted)}
-input:focus-visible, select:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+input:focus-visible, select:focus-visible, button:focus-visible, label.btn:focus-within{outline:2px solid var(--accent); outline-offset:2px}
+input[type="file"]{position:absolute; width:1px; height:1px; opacity:0; overflow:hidden}
 .meta{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; color:var(--muted); font-size:13px}
 .tablewrap{background:var(--surface); border:1px solid var(--line); border-radius:8px; overflow-x:auto}
-table{width:100%; border-collapse:collapse; min-width:760px}
+table{width:100%; border-collapse:collapse; min-width:780px}
 th, td{padding:10px 12px; text-align:left; vertical-align:middle; border-bottom:1px solid var(--line)}
 tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:var(--hover)}
@@ -81,6 +91,7 @@ td.r, th.r{text-align:right}
 .sjr .v{width:52px; text-align:right; font-weight:500}
 .track{flex:1; height:6px; border-radius:3px; background:var(--hover)}
 .fill{height:100%; border-radius:3px; background:var(--bar)}
+.up{color:var(--up)} .down{color:var(--down)} .dash{color:var(--muted)}
 .empty{padding:36px 16px; text-align:center; color:var(--muted)}
 .foot{color:var(--muted); font-size:12.5px; max-width:80ch; margin:0}
 @media (prefers-reduced-motion: no-preference){ .fill{transition:width .25s ease} }
@@ -95,10 +106,585 @@ td.r, th.r{text-align:right}
 <script>
 const { useState, useMemo } = React;
 const html = htm.bind(React.createElement);
-const DATA = [{"j": "American Economic Journal: Microeconomics", "s": 4.257, "q": "Q1", "h": 62, "n": 12, "cpd": 2.14, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Journal", "s": 5.181, "q": "Q1", "h": 205, "n": 73, "cpd": 3.57, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "International Economic Review", "s": 2.751, "q": "Q1", "h": 105, "n": 93, "cpd": 1.73, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "European Economic Review", "s": 2.017, "q": "Q1", "h": 161, "n": 188, "cpd": 2.72, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "RAND Journal of Economics", "s": 4.617, "q": "Q1", "h": 135, "n": 51, "cpd": 2.47, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Law and Economics", "s": 1.592, "q": "Q1", "h": 98, "n": 28, "cpd": 1.58, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Analysis and Policy", "s": 1.966, "q": "Q1", "h": 86, "n": 9, "cpd": 10.58, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Economics and Management Strategy", "s": 1.506, "q": "Q1", "h": 85, "n": 68, "cpd": 2.89, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Industrial Economics", "s": 1.404, "q": "Q1", "h": 92, "n": 27, "cpd": 1.47, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "International Journal of Industrial Organization", "s": 1.449, "q": "Q1", "h": 100, "n": 49, "cpd": 2.04, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Games and Economic Behavior", "s": 1.11, "q": "Q1", "h": 114, "n": 137, "cpd": 1.17, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economics of Innovation and New Technology", "s": 1.024, "q": "Q1", "h": 75, "n": 112, "cpd": 4.31, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Modelling", "s": 1.348, "q": "Q1", "h": 133, "n": 335, "cpd": 6.5, "c": 0, "pub": 1, "ref": 1, "add": 0}, {"j": "International Review of Economics and Finance", "s": 1.485, "q": "Q1", "h": 101, "n": 995, "cpd": 8.27, "c": 0, "pub": 1, "ref": 0, "add": 0}, {"j": "Industrial and Corporate Change", "s": 1.091, "q": "Q1", "h": 137, "n": 60, "cpd": 3.1, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Information Economics and Policy", "s": 1.236, "q": "Q1", "h": 65, "n": 18, "cpd": 2.19, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Law, Economics, and Organization", "s": 1.198, "q": "Q1", "h": 84, "n": 39, "cpd": 2.17, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Economic Behavior and Organization", "s": 1.266, "q": "Q1", "h": 153, "n": 419, "cpd": 3.06, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Theory", "s": 1.233, "q": "Q1", "h": 73, "n": 117, "cpd": 1.34, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Comparative Economics", "s": 1.666, "q": "Q1", "h": 116, "n": 54, "cpd": 4.48, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Scandinavian Journal of Economics", "s": 1.34, "q": "Q1", "h": 82, "n": 34, "cpd": 1.75, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Inquiry", "s": 0.871, "q": "Q1", "h": 93, "n": 71, "cpd": 1.59, "c": 0, "pub": 0, "ref": 1, "add": 0}, {"j": "Review of Industrial Organization", "s": 0.701, "q": "Q2", "h": 69, "n": 52, "cpd": 1.27, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Canadian Journal of Economics", "s": 0.893, "q": "Q2", "h": 85, "n": 56, "cpd": 1.02, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "North American Journal of Economics and Finance", "s": 0.812, "q": "Q2", "h": 73, "n": 208, "cpd": 4.69, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Southern Economic Journal", "s": 0.686, "q": "Q2", "h": 74, "n": 84, "cpd": 1.44, "c": 0, "pub": 0, "ref": 1, "add": 0}, {"j": "Economics Letters", "s": 0.718, "q": "Q2", "h": 142, "n": 554, "cpd": 2.2, "c": 0, "pub": 1, "ref": 0, "add": 0}, {"j": "Journal of Industrial and Business Economics", "s": 0.73, "q": "Q1", "h": 29, "n": 62, "cpd": 3.24, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Annals of Regional Science", "s": 0.752, "q": "Q1", "h": 86, "n": 97, "cpd": 2.79, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Public Economic Theory", "s": 0.386, "q": "Q2", "h": 38, "n": 85, "cpd": 0.94, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Managerial and Decision Economics", "s": 0.671, "q": "Q2", "h": 71, "n": 253, "cpd": 3.28, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Oxford Economic Papers", "s": 0.846, "q": "Q2", "h": 84, "n": 55, "cpd": 2.71, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Applied Economics", "s": 0.624, "q": "Q1", "h": 35, "n": 72, "cpd": 3.28, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "International Economics and Economic Policy", "s": 0.453, "q": "Q3", "h": 34, "n": 65, "cpd": 2.0, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Australian Economic Papers", "s": 0.368, "q": "Q2", "h": 26, "n": 43, "cpd": 1.48, "c": 0, "pub": 0, "ref": 1, "add": 0}, {"j": "Journal of Competition Law and Economics", "s": 1.138, "q": "Q1", "h": 37, "n": 24, "cpd": 1.98, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "International Journal of the Economics of Business", "s": 0.551, "q": "Q2", "h": 42, "n": 27, "cpd": 1.04, "c": 1, "pub": 1, "ref": 1, "add": 0}, {"j": "Journal of Economics (Zeitschrift für Nationalökonomie)", "s": 0.31, "q": "Q3", "h": 40, "n": 36, "cpd": 1.03, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Applied Economics Letters", "s": 0.387, "q": "Q3", "h": 72, "n": 1182, "cpd": 1.78, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Singapore Economic Review", "s": 0.285, "q": "Q3", "h": 34, "n": 192, "cpd": 1.49, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Scottish Journal of Political Economy", "s": 0.396, "q": "Q2", "h": 57, "n": 52, "cpd": 1.36, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Regulatory Economics", "s": 0.341, "q": "Q3", "h": 63, "n": 15, "cpd": 1.59, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Revenue and Pricing Management", "s": 0.262, "q": "Q3", "h": 34, "n": 67, "cpd": 1.38, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Manchester School", "s": 0.355, "q": "Q3", "h": 49, "n": 39, "cpd": 1.14, "c": 0, "pub": 1, "ref": 1, "add": 0}, {"j": "Journal of Industry, Competition and Trade", "s": 0.434, "q": "Q2", "h": 33, "n": 25, "cpd": 2.43, "c": 1, "pub": 1, "ref": 1, "add": 0}, {"j": "Review of Network Economics", "s": 0.184, "q": "Q4", "h": 20, "n": 6, "cpd": 0.31, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Economic Theory", "s": 2.842, "q": "Q1", "h": 124, "n": 105, "cpd": 1.35, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Theoretical Economics", "s": 3.295, "q": "Q1", "h": 43, "n": 40, "cpd": 1.23, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Public Economics", "s": 3.601, "q": "Q1", "h": 192, "n": 170, "cpd": 3.48, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Mathematical Economics", "s": 0.878, "q": "Q1", "h": 49, "n": 70, "cpd": 0.96, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "International Journal of Game Theory", "s": 0.361, "q": "Q2", "h": 51, "n": 48, "cpd": 0.61, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Telecommunications Policy", "s": 1.519, "q": "Q1", "h": 101, "n": 110, "cpd": 8.15, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Utilities Policy", "s": 1.073, "q": "Q1", "h": 72, "n": 175, "cpd": 5.88, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Evolutionary Economics", "s": 0.673, "q": "Q2", "h": 89, "n": 32, "cpd": 2.92, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Economics of Transportation", "s": 0.692, "q": "Q1", "h": 33, "n": 27, "cpd": 3.23, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Quantitative Marketing and Economics", "s": 1.811, "q": "Q1", "h": 41, "n": 16, "cpd": 2.46, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Small Business Economics", "s": 2.618, "q": "Q1", "h": 196, "n": 209, "cpd": 8.58, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Environmental Economics and Management", "s": 2.968, "q": "Q1", "h": 168, "n": 118, "cpd": 7.13, "c": 0, "pub": 1, "ref": 0, "add": 1}, {"j": "Environmental and Resource Economics", "s": 1.377, "q": "Q1", "h": 129, "n": 123, "cpd": 4.23, "c": 0, "pub": 1, "ref": 0, "add": 1}, {"j": "B.E. Journal of Economic Analysis and Policy", "s": 0.301, "q": "Q2", "h": 62, "n": 46, "cpd": 0.68, "c": 0, "pub": 0, "ref": 1, "add": 1}, {"j": "Bulletin of Economic Research", "s": 0.385, "q": "Q3", "h": 39, "n": 56, "cpd": 1.71, "c": 0, "pub": 0, "ref": 1, "add": 1}, {"j": "Journal of Economics and Business", "s": 0.783, "q": "Q1", "h": 65, "n": 29, "cpd": 3.2, "c": 0, "pub": 0, "ref": 1, "add": 1}];
 
-const ranked = DATA.slice().sort((a, b) => b.s - a.s).map((r, i) => ({ ...r, rank: i + 1 }));
-const MAXS = Math.sqrt(Math.max(...ranked.map(r => r.s)));
+/* ---------------------------------------------------------------
+   Your list. Edit this array to add or drop journals or change tags.
+   j = display name, t = title exactly as SCImago spells it,
+   c = IO-focused, pub = you published there, ref = you referee there,
+   add = added after the first list.
+---------------------------------------------------------------- */
+const WATCH = [
+ {
+  "j": "American Economic Journal: Microeconomics",
+  "t": "American Economic Journal: Microeconomics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Economic Journal",
+  "t": "Economic Journal",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "International Economic Review",
+  "t": "International Economic Review",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "European Economic Review",
+  "t": "European Economic Review",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "RAND Journal of Economics",
+  "t": "RAND Journal of Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Law and Economics",
+  "t": "Journal of Law and Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Economic Analysis and Policy",
+  "t": "Economic Analysis and Policy",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Economics and Management Strategy",
+  "t": "Journal of Economics and Management Strategy",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Industrial Economics",
+  "t": "Journal of Industrial Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "International Journal of Industrial Organization",
+  "t": "International Journal of Industrial Organization",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Games and Economic Behavior",
+  "t": "Games and Economic Behavior",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Economics of Innovation and New Technology",
+  "t": "Economics of Innovation and New Technology",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Economic Modelling",
+  "t": "Economic Modelling",
+  "c": 0,
+  "pub": 1,
+  "ref": 1,
+  "add": 0
+ },
+ {
+  "j": "International Review of Economics and Finance",
+  "t": "International Review of Economics and Finance",
+  "c": 0,
+  "pub": 1,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Industrial and Corporate Change",
+  "t": "Industrial and Corporate Change",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Information Economics and Policy",
+  "t": "Information Economics and Policy",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Law, Economics, and Organization",
+  "t": "Journal of Law, Economics, and Organization",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Economic Behavior and Organization",
+  "t": "Journal of Economic Behavior and Organization",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Economic Theory",
+  "t": "Economic Theory",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Comparative Economics",
+  "t": "Journal of Comparative Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Scandinavian Journal of Economics",
+  "t": "Scandinavian Journal of Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Economic Inquiry",
+  "t": "Economic Inquiry",
+  "c": 0,
+  "pub": 0,
+  "ref": 1,
+  "add": 0
+ },
+ {
+  "j": "Review of Industrial Organization",
+  "t": "Review of Industrial Organization",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Canadian Journal of Economics",
+  "t": "Canadian Journal of Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "North American Journal of Economics and Finance",
+  "t": "North American Journal of Economics and Finance",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Southern Economic Journal",
+  "t": "Southern Economic Journal",
+  "c": 0,
+  "pub": 0,
+  "ref": 1,
+  "add": 0
+ },
+ {
+  "j": "Economics Letters",
+  "t": "Economics Letters",
+  "c": 0,
+  "pub": 1,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Industrial and Business Economics",
+  "t": "Journal of Industrial and Business Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Annals of Regional Science",
+  "t": "Annals of Regional Science",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Public Economic Theory",
+  "t": "Journal of Public Economic Theory",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Managerial and Decision Economics",
+  "t": "Managerial and Decision Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Oxford Economic Papers",
+  "t": "Oxford Economic Papers",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Applied Economics",
+  "t": "Journal of Applied Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "International Economics and Economic Policy",
+  "t": "International Economics and Economic Policy",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Australian Economic Papers",
+  "t": "Australian Economic Papers",
+  "c": 0,
+  "pub": 0,
+  "ref": 1,
+  "add": 0
+ },
+ {
+  "j": "Journal of Competition Law and Economics",
+  "t": "Journal of Competition Law and Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "International Journal of the Economics of Business",
+  "t": "International Journal of the Economics of Business",
+  "c": 1,
+  "pub": 1,
+  "ref": 1,
+  "add": 0
+ },
+ {
+  "j": "Journal of Economics (Zeitschrift für Nationalökonomie)",
+  "t": "Journal of Economics/ Zeitschrift fur Nationalokonomie",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Applied Economics Letters",
+  "t": "Applied Economics Letters",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Singapore Economic Review",
+  "t": "Singapore Economic Review",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Scottish Journal of Political Economy",
+  "t": "Scottish Journal of Political Economy",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Regulatory Economics",
+  "t": "Journal of Regulatory Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Revenue and Pricing Management",
+  "t": "Journal of Revenue and Pricing Management",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Manchester School",
+  "t": "Manchester School",
+  "c": 0,
+  "pub": 1,
+  "ref": 1,
+  "add": 0
+ },
+ {
+  "j": "Journal of Industry, Competition and Trade",
+  "t": "Journal of Industry, Competition and Trade",
+  "c": 1,
+  "pub": 1,
+  "ref": 1,
+  "add": 0
+ },
+ {
+  "j": "Review of Network Economics",
+  "t": "Review of Network Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 0
+ },
+ {
+  "j": "Journal of Economic Theory",
+  "t": "Journal of Economic Theory",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Theoretical Economics",
+  "t": "Theoretical Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Journal of Public Economics",
+  "t": "Journal of Public Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Journal of Mathematical Economics",
+  "t": "Journal of Mathematical Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "International Journal of Game Theory",
+  "t": "International Journal of Game Theory",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Telecommunications Policy",
+  "t": "Telecommunications Policy",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Utilities Policy",
+  "t": "Utilities Policy",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Journal of Evolutionary Economics",
+  "t": "Journal of Evolutionary Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Economics of Transportation",
+  "t": "Economics of Transportation",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Quantitative Marketing and Economics",
+  "t": "Quantitative Marketing and Economics",
+  "c": 1,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Small Business Economics",
+  "t": "Small Business Economics",
+  "c": 0,
+  "pub": 0,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Journal of Environmental Economics and Management",
+  "t": "Journal of Environmental Economics and Management",
+  "c": 0,
+  "pub": 1,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "Environmental and Resource Economics",
+  "t": "Environmental and Resource Economics",
+  "c": 0,
+  "pub": 1,
+  "ref": 0,
+  "add": 1
+ },
+ {
+  "j": "B.E. Journal of Economic Analysis and Policy",
+  "t": "B.E. Journal of Economic Analysis and Policy",
+  "c": 0,
+  "pub": 0,
+  "ref": 1,
+  "add": 1
+ },
+ {
+  "j": "Bulletin of Economic Research",
+  "t": "Bulletin of Economic Research",
+  "c": 0,
+  "pub": 0,
+  "ref": 1,
+  "add": 1
+ },
+ {
+  "j": "Journal of Economics and Business",
+  "t": "Journal of Economics and Business",
+  "c": 0,
+  "pub": 0,
+  "ref": 1,
+  "add": 1
+ }
+];
+
+/* Built-in values (SCImago SJR 2025) used until you upload a file. */
+const BUILTIN = {"year": 2025, "vals": {"american economic journal microeconomics": {"s": 4.257, "q": "Q1", "h": 62, "n": 12, "cpd": 2.14}, "economic journal": {"s": 5.181, "q": "Q1", "h": 205, "n": 73, "cpd": 3.57}, "international economic review": {"s": 2.751, "q": "Q1", "h": 105, "n": 93, "cpd": 1.73}, "european economic review": {"s": 2.017, "q": "Q1", "h": 161, "n": 188, "cpd": 2.72}, "rand journal of economics": {"s": 4.617, "q": "Q1", "h": 135, "n": 51, "cpd": 2.47}, "journal of law and economics": {"s": 1.592, "q": "Q1", "h": 98, "n": 28, "cpd": 1.58}, "economic analysis and policy": {"s": 1.966, "q": "Q1", "h": 86, "n": 9, "cpd": 10.58}, "journal of economics and management strategy": {"s": 1.506, "q": "Q1", "h": 85, "n": 68, "cpd": 2.89}, "journal of industrial economics": {"s": 1.404, "q": "Q1", "h": 92, "n": 27, "cpd": 1.47}, "international journal of industrial organization": {"s": 1.449, "q": "Q1", "h": 100, "n": 49, "cpd": 2.04}, "games and economic behavior": {"s": 1.11, "q": "Q1", "h": 114, "n": 137, "cpd": 1.17}, "economics of innovation and new technology": {"s": 1.024, "q": "Q1", "h": 75, "n": 112, "cpd": 4.31}, "economic modelling": {"s": 1.348, "q": "Q1", "h": 133, "n": 335, "cpd": 6.5}, "international review of economics and finance": {"s": 1.485, "q": "Q1", "h": 101, "n": 995, "cpd": 8.27}, "industrial and corporate change": {"s": 1.091, "q": "Q1", "h": 137, "n": 60, "cpd": 3.1}, "information economics and policy": {"s": 1.236, "q": "Q1", "h": 65, "n": 18, "cpd": 2.19}, "journal of law economics and organization": {"s": 1.198, "q": "Q1", "h": 84, "n": 39, "cpd": 2.17}, "journal of economic behavior and organization": {"s": 1.266, "q": "Q1", "h": 153, "n": 419, "cpd": 3.06}, "economic theory": {"s": 1.233, "q": "Q1", "h": 73, "n": 117, "cpd": 1.34}, "journal of comparative economics": {"s": 1.666, "q": "Q1", "h": 116, "n": 54, "cpd": 4.48}, "scandinavian journal of economics": {"s": 1.34, "q": "Q1", "h": 82, "n": 34, "cpd": 1.75}, "economic inquiry": {"s": 0.871, "q": "Q1", "h": 93, "n": 71, "cpd": 1.59}, "review of industrial organization": {"s": 0.701, "q": "Q2", "h": 69, "n": 52, "cpd": 1.27}, "canadian journal of economics": {"s": 0.893, "q": "Q2", "h": 85, "n": 56, "cpd": 1.02}, "north american journal of economics and finance": {"s": 0.812, "q": "Q2", "h": 73, "n": 208, "cpd": 4.69}, "southern economic journal": {"s": 0.686, "q": "Q2", "h": 74, "n": 84, "cpd": 1.44}, "economics letters": {"s": 0.718, "q": "Q2", "h": 142, "n": 554, "cpd": 2.2}, "journal of industrial and business economics": {"s": 0.73, "q": "Q1", "h": 29, "n": 62, "cpd": 3.24}, "annals of regional science": {"s": 0.752, "q": "Q1", "h": 86, "n": 97, "cpd": 2.79}, "journal of public economic theory": {"s": 0.386, "q": "Q2", "h": 38, "n": 85, "cpd": 0.94}, "managerial and decision economics": {"s": 0.671, "q": "Q2", "h": 71, "n": 253, "cpd": 3.28}, "oxford economic papers": {"s": 0.846, "q": "Q2", "h": 84, "n": 55, "cpd": 2.71}, "journal of applied economics": {"s": 0.624, "q": "Q1", "h": 35, "n": 72, "cpd": 3.28}, "international economics and economic policy": {"s": 0.453, "q": "Q3", "h": 34, "n": 65, "cpd": 2.0}, "australian economic papers": {"s": 0.368, "q": "Q2", "h": 26, "n": 43, "cpd": 1.48}, "journal of competition law and economics": {"s": 1.138, "q": "Q1", "h": 37, "n": 24, "cpd": 1.98}, "international journal of the economics of business": {"s": 0.551, "q": "Q2", "h": 42, "n": 27, "cpd": 1.04}, "journal of economics zeitschrift fur nationalokonomie": {"s": 0.31, "q": "Q3", "h": 40, "n": 36, "cpd": 1.03}, "applied economics letters": {"s": 0.387, "q": "Q3", "h": 72, "n": 1182, "cpd": 1.78}, "singapore economic review": {"s": 0.285, "q": "Q3", "h": 34, "n": 192, "cpd": 1.49}, "scottish journal of political economy": {"s": 0.396, "q": "Q2", "h": 57, "n": 52, "cpd": 1.36}, "journal of regulatory economics": {"s": 0.341, "q": "Q3", "h": 63, "n": 15, "cpd": 1.59}, "journal of revenue and pricing management": {"s": 0.262, "q": "Q3", "h": 34, "n": 67, "cpd": 1.38}, "manchester school": {"s": 0.355, "q": "Q3", "h": 49, "n": 39, "cpd": 1.14}, "journal of industry competition and trade": {"s": 0.434, "q": "Q2", "h": 33, "n": 25, "cpd": 2.43}, "review of network economics": {"s": 0.184, "q": "Q4", "h": 20, "n": 6, "cpd": 0.31}, "journal of economic theory": {"s": 2.842, "q": "Q1", "h": 124, "n": 105, "cpd": 1.35}, "theoretical economics": {"s": 3.295, "q": "Q1", "h": 43, "n": 40, "cpd": 1.23}, "journal of public economics": {"s": 3.601, "q": "Q1", "h": 192, "n": 170, "cpd": 3.48}, "journal of mathematical economics": {"s": 0.878, "q": "Q1", "h": 49, "n": 70, "cpd": 0.96}, "international journal of game theory": {"s": 0.361, "q": "Q2", "h": 51, "n": 48, "cpd": 0.61}, "telecommunications policy": {"s": 1.519, "q": "Q1", "h": 101, "n": 110, "cpd": 8.15}, "utilities policy": {"s": 1.073, "q": "Q1", "h": 72, "n": 175, "cpd": 5.88}, "journal of evolutionary economics": {"s": 0.673, "q": "Q2", "h": 89, "n": 32, "cpd": 2.92}, "economics of transportation": {"s": 0.692, "q": "Q1", "h": 33, "n": 27, "cpd": 3.23}, "quantitative marketing and economics": {"s": 1.811, "q": "Q1", "h": 41, "n": 16, "cpd": 2.46}, "small business economics": {"s": 2.618, "q": "Q1", "h": 196, "n": 209, "cpd": 8.58}, "journal of environmental economics and management": {"s": 2.968, "q": "Q1", "h": 168, "n": 118, "cpd": 7.13}, "environmental and resource economics": {"s": 1.377, "q": "Q1", "h": 129, "n": 123, "cpd": 4.23}, "be journal of economic analysis and policy": {"s": 0.301, "q": "Q2", "h": 62, "n": 46, "cpd": 0.68}, "bulletin of economic research": {"s": 0.385, "q": "Q3", "h": 39, "n": 56, "cpd": 1.71}, "journal of economics and business": {"s": 0.783, "q": "Q1", "h": 65, "n": 29, "cpd": 3.2}}};
+
+/*PURE-START*/
+function normTitle(s) {
+  return String(s).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/&/g, "and").replace(/[^a-z0-9 ]/g, "").trim();
+}
+
+function parseCsv(text) {
+  text = text.replace(/^﻿/, "");
+  const nl = text.indexOf("\n");
+  const head = nl < 0 ? text : text.slice(0, nl);
+  const delim = (head.match(/;/g) || []).length > (head.match(/,/g) || []).length ? ";" : ",";
+  const rows = []; let row = [], field = "", inq = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inq) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inq = false; }
+      else field += ch;
+    } else if (ch === '"') inq = true;
+    else if (ch === delim) { row.push(field); field = ""; }
+    else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (ch !== "\r") field += ch;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+const toNum = s => { const n = parseFloat(String(s).replace(",", ".")); return isNaN(n) ? null : n; };
+
+/* Reads a SCImago journal-rank CSV and returns the entries for the titles in `watch`. */
+function extract(text, watch) {
+  const rows = parseCsv(text);
+  if (rows.length < 2) throw new Error("The file has no data rows.");
+  const hdr = rows[0].map(h => h.trim());
+  const col = name => hdr.indexOf(name);
+  const iTitle = col("Title"), iSjr = col("SJR"), iQ = col("SJR Best Quartile"), iH = col("H index");
+  const iCpd = col("Citations / Doc. (2years)"), iType = col("Type");
+  let iDocs = -1, year = null;
+  hdr.forEach((h, i) => { const m = h.match(/^Total Docs\. \((\d{4})\)$/); if (m && iDocs < 0) { iDocs = i; year = Number(m[1]); } });
+  if (iTitle < 0 || iSjr < 0 || iDocs < 0)
+    throw new Error("This does not look like a SCImago journal rank export (missing Title, SJR or Total Docs columns).");
+  const want = new Map(watch.map(w => [normTitle(w.t), w]));
+  const found = {};
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r]; if (row.length < hdr.length - 2) continue;
+    const key = normTitle(row[iTitle]);
+    if (!want.has(key)) continue;
+    const isJournal = iType < 0 || row[iType] === "journal";
+    if (found[key] && !(isJournal && !found[key].journal)) continue;
+    found[key] = { journal: isJournal, s: toNum(row[iSjr]), q: iQ < 0 ? "" : row[iQ],
+      h: iH < 0 ? null : toNum(row[iH]), n: toNum(row[iDocs]), cpd: iCpd < 0 ? null : toNum(row[iCpd]) };
+  }
+  const vals = {}, missing = [];
+  watch.forEach(w => {
+    const k = normTitle(w.t), f = found[k];
+    if (f && f.s != null) vals[k] = { s: f.s, q: f.q, h: f.h, n: f.n, cpd: f.cpd }; else missing.push(w.j);
+  });
+  return { year, vals, missing };
+}
+/*PURE-END*/
+
+const STORE = "ioRanker.v1";
+function loadStore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(STORE));
+    if (o && o.cur && o.cur.year && o.cur.vals) return o;
+  } catch (e) {}
+  return null;
+}
+function saveStore(o) { try { localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) {} }
+function clearStore() { try { localStorage.removeItem(STORE); } catch (e) {} }
 
 const BANDS = [
   ["all", "All SJR", () => true],
@@ -108,25 +694,27 @@ const BANDS = [
   ["vlow", "Below 0.5", r => r.s < 0.5]
 ];
 
-const COLS = [
-  { k: "s", label: "SJR 2025", cls: "" },
-  { k: "q", label: "Quartile", cls: "" },
-  { k: "h", label: "h-index", cls: "r" },
-  { k: "cpd", label: "Cites / doc", cls: "r" },
-  { k: "n", label: "Docs 2025", cls: "r" }
-];
+function val(r, k) { return k === "q" ? Number((r.q || "Q9")[1]) : r[k]; }
+const fmt = (n, d) => n == null ? "-" : n.toFixed(d);
 
-function val(r, k) { return k === "q" ? Number(r.q[1]) : r[k]; }
-
-function Sjr({ r }) {
-  const w = (Math.sqrt(r.s) / MAXS) * 100;
+function Sjr({ r, max }) {
+  const w = (Math.sqrt(r.s) / max) * 100;
   return html`<div class="sjr">
     <span class="v num">${r.s.toFixed(3)}</span>
     <div class="track"><div class="fill" style=${{ width: w + "%" }}></div></div>
   </div>`;
 }
 
+function Delta({ d }) {
+  if (d == null) return html`<span class="dash">-</span>`;
+  if (Math.abs(d) < 0.0005) return html`<span class="num">0.000</span>`;
+  const up = d > 0;
+  return html`<span class=${"num " + (up ? "up" : "down")}>${up ? "▲ +" : "▼ "}${d.toFixed(3)}</span>`;
+}
+
 function App() {
+  const [store, setStore] = useState(() => loadStore() || { cur: BUILTIN, prior: null });
+  const [note, setNote] = useState(null);
   const [q, setQ] = useState("");
   const [band, setBand] = useState("all");
   const [io, setIo] = useState(false);
@@ -135,49 +723,115 @@ function App() {
   const [added, setAdded] = useState(false);
   const [sort, setSort] = useState({ k: "s", dir: "desc" });
 
+  const { cur, prior } = store;
+  const hasPrior = !!prior;
+
+  const ranked = useMemo(() => {
+    const base = WATCH.map(w => {
+      const k = normTitle(w.t), v = cur.vals[k];
+      if (!v) return null;
+      const p = prior && prior.vals[k];
+      return { ...w, ...v, d: p ? Math.round((v.s - p.s) * 1000) / 1000 : null };
+    }).filter(Boolean);
+    base.sort((a, b) => b.s - a.s);
+    return base.map((r, i) => ({ ...r, rank: i + 1 }));
+  }, [cur, prior]);
+
+  const maxS = Math.sqrt(Math.max(1, ...ranked.map(r => r.s)));
+
   const rows = useMemo(() => {
     const test = BANDS.find(b => b[0] === band)[2];
     const needle = q.trim().toLowerCase();
     const out = ranked.filter(r =>
       test(r) && (!io || r.c) && (!mine || r.pub) && (!ref || r.ref) && (!added || r.add) &&
-      (!needle || r.j.toLowerCase().includes(needle))
-    );
+      (!needle || r.j.toLowerCase().includes(needle)));
     const f = sort.dir === "asc" ? 1 : -1;
     out.sort((a, b) => {
       if (sort.k === "j") return f * a.j.localeCompare(b.j);
       const x = val(a, sort.k), y = val(b, sort.k);
+      if (x == null && y == null) return a.rank - b.rank;
+      if (x == null) return 1;
+      if (y == null) return -1;
       return x === y ? a.rank - b.rank : f * (x - y);
     });
     return out;
-  }, [q, band, io, mine, ref, added, sort]);
+  }, [ranked, q, band, io, mine, ref, added, sort]);
+
+  const cols = [
+    { k: "s", label: "SJR " + cur.year, cls: "" },
+    ...(hasPrior ? [{ k: "d", label: "vs " + prior.year, cls: "r" }] : []),
+    { k: "q", label: "Quartile", cls: "" },
+    { k: "h", label: "h-index", cls: "r" },
+    { k: "cpd", label: "Cites / doc", cls: "r" },
+    { k: "n", label: "Docs " + cur.year, cls: "r" }
+  ];
 
   const setKey = k => setSort(s => s.k === k
     ? { k, dir: s.dir === "asc" ? "desc" : "asc" }
     : { k, dir: k === "j" || k === "q" ? "asc" : "desc" });
 
+  const onFile = e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onerror = () => setNote({ kind: "warn", text: "The file could not be read." });
+    rd.onload = () => {
+      try {
+        const res = extract(String(rd.result), WATCH);
+        if (Object.keys(res.vals).length === 0)
+          throw new Error("None of your journals were found in that file.");
+        const entry = { year: res.year, vals: res.vals };
+        let next, how;
+        if (res.year > cur.year) { next = { cur: entry, prior: cur }; how = "Kept " + cur.year + " for the comparison column."; }
+        else if (res.year === cur.year) { next = { cur: entry, prior: store.prior }; how = "Replaced the " + res.year + " data."; }
+        else { next = { cur: cur, prior: entry }; how = "That file is older than the current data, so it is used for the comparison column."; }
+        setStore(next); saveStore(next);
+        const n = Object.keys(res.vals).length;
+        setNote({ kind: res.missing.length ? "warn" : "ok",
+          text: "Loaded SJR " + res.year + ": " + n + " of " + WATCH.length + " journals found. " + how +
+            (res.missing.length ? " Not found in the file (renamed, merged or dropped?): " + res.missing.join("; ") + "." : "") });
+      } catch (err) {
+        setNote({ kind: "warn", text: err.message || "The file could not be read." });
+      }
+    };
+    rd.readAsText(file);
+  };
+
+  const reset = () => { clearStore(); setStore({ cur: BUILTIN, prior: null }); setNote({ kind: "ok", text: "Back to the built-in SJR " + BUILTIN.year + " data." }); };
+
   const downloadCsv = () => {
     const esc = s => '"' + String(s).replace(/"/g, '""') + '"';
-    const lines = ["rank,journal,sjr_2025,best_quartile,h_index,docs_2025,cites_per_doc_2y,io_focused,published,refereed,added"].concat(
-      rows.map(r => [r.rank, esc(r.j), r.s, r.q, r.h, r.n, r.cpd, r.c ? 1 : 0, r.pub ? 1 : 0, r.ref ? 1 : 0, r.add ? 1 : 0].join(","))
-    );
+    const head = ["rank", "journal", "sjr_" + cur.year, ...(hasPrior ? ["change_vs_" + prior.year] : []),
+      "best_quartile", "h_index", "docs_" + cur.year, "cites_per_doc_2y", "io_focused", "published", "refereed", "added"];
+    const lines = [head.join(",")].concat(rows.map(r => [r.rank, esc(r.j), r.s, ...(hasPrior ? [r.d ?? ""] : []),
+      r.q, r.h ?? "", r.n ?? "", r.cpd ?? "", r.c ? 1 : 0, r.pub ? 1 : 0, r.ref ? 1 : 0, r.add ? 1 : 0].join(",")));
     const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "io_journals_sjr_2025.csv";
+    a.href = URL.createObjectURL(blob); a.download = "io_journals_sjr_" + cur.year + ".csv";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
   const ariaSort = k => sort.k === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
   const arrow = k => sort.k === k ? (sort.dir === "asc" ? "▲" : "▼") : "";
+  const isBuiltin = !loadStore();
 
   return html`<div class="page">
     <header>
       <h1>IO Journal Ranker</h1>
-      <p class="sub">${ranked.length} economics journals for a theoretical industrial organization paper, ranked by SCImago SJR 2025.</p>
+      <p class="sub">${ranked.length} economics journals for a theoretical industrial organization paper, ranked by SCImago SJR ${cur.year}.</p>
     </header>
 
-    <div class="note">All figures come from the SCImago Journal Rank 2025 file (Scopus data as of March 2026). Quartile is each journal's best quartile across its subject categories. Cites / doc is citations per document over two years.</div>
+    <div class="strip">
+      <div class="txt">Showing SJR ${cur.year}${isBuiltin ? " (built-in data)" : " (from your upload)"}${hasPrior ? ", compared with " + prior.year : ""}. Each year, download the journal rankings CSV from scimagojr.com and upload it here.</div>
+      <div class="btns">
+        <label class="btn primary">Upload SCImago CSV<input id="file" type="file" accept=".csv,text/csv" onChange=${onFile} /></label>
+        ${isBuiltin ? null : html`<button class="btn" onClick=${reset}>Reset</button>`}
+      </div>
+    </div>
+
+    ${note ? html`<div class=${"msg " + note.kind} role="status">${note.text}</div>` : null}
 
     <div class="toolbar">
       <div class="search">
@@ -204,7 +858,7 @@ function App() {
         <thead><tr>
           <th class="rank">#</th>
           <th aria-sort=${ariaSort("j")}><button onClick=${() => setKey("j")}>Journal ${arrow("j")}</button></th>
-          ${COLS.map(c => html`<th key=${c.k} class=${c.cls} aria-sort=${ariaSort(c.k)}>
+          ${cols.map(c => html`<th key=${c.k} class=${c.cls} aria-sort=${ariaSort(c.k)}>
             <button onClick=${() => setKey(c.k)}>${c.label} ${arrow(c.k)}</button></th>`)}
         </tr></thead>
         <tbody>
@@ -216,18 +870,19 @@ function App() {
               ${r.ref ? html`<span class="chip out">Referee</span>` : null}
               ${r.add ? html`<span class="chip out">New</span>` : null}
             </span></td>
-            <td><${Sjr} r=${r} /></td>
-            <td><span class="num">${r.q}</span></td>
-            <td class="r num">${r.h}</td>
-            <td class="r num">${r.cpd.toFixed(2)}</td>
-            <td class="r num">${r.n}</td>
+            <td><${Sjr} r=${r} max=${maxS} /></td>
+            ${hasPrior ? html`<td class="r"><${Delta} d=${r.d} /></td>` : null}
+            <td><span class="num">${r.q || "-"}</span></td>
+            <td class="r num">${fmt(r.h, 0)}</td>
+            <td class="r num">${fmt(r.cpd, 2)}</td>
+            <td class="r num">${fmt(r.n, 0)}</td>
           </tr>`)}
         </tbody>
       </table>
       ${rows.length === 0 ? html`<div class="empty">No journals match. Clear the search or a filter.</div>` : null}
     </div>
 
-    <p class="foot">"IO-focused" is a judgment about subject scope, not a SCImago category. "New" marks journals added after the first list. "Published" marks journals in your CV\'s refereed publications that are in economics, and "Referee" marks journals on your ad hoc referee list.</p>
+    <p class="foot">Uploaded data stays in this browser only. "IO-focused" is a judgment about subject scope, not a SCImago category. Quartile is each journal's best quartile across its subject categories. To add or drop journals, or change tags, edit the WATCH list near the top of this file's script.</p>
   </div>`;
 }
 
