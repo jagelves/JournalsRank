@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IO Journal Ranker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one toolbar over one sortable table; the SJR column carries a scaled bar so magnitude reads before the digits do. */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --ink:#151a22; --ink2:#47505e; --muted:#6f7a8b;
+  --line:#e0e4ea; --hover:#f0f3f8; --accent:#25499a; --accent-ink:#ffffff; --accent-soft:#e5ebf8;
+  --bar:#8aa2d6; --info-bg:#eaf0f8; --info-ink:#2c3e5c;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1218; --surface:#151a22; --ink:#e7ebf2; --ink2:#a9b2c0; --muted:#8792a3;
+    --line:#262d39; --hover:#1b222d; --accent:#8fb0f5; --accent-ink:#0e1218; --accent-soft:#1c2a47;
+    --bar:#4d6cae; --info-bg:#18202e; --info-ink:#b4c3dd;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1218; --surface:#151a22; --ink:#e7ebf2; --ink2:#a9b2c0; --muted:#8792a3;
+  --line:#262d39; --hover:#1b222d; --accent:#8fb0f5; --accent-ink:#0e1218; --accent-soft:#1c2a47;
+  --bar:#4d6cae; --info-bg:#18202e; --info-ink:#b4c3dd;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:14px; line-height:1.5;
+  padding-block:28px 40px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.page{max-width:1040px; margin:0 auto; display:flex; flex-direction:column; gap:16px}
+h1{font-size:22px; font-weight:600; letter-spacing:-0.01em; margin:0; text-wrap:balance}
+.sub{margin:4px 0 0; color:var(--ink2); max-width:68ch}
+.note{background:var(--info-bg); color:var(--info-ink); border-radius:6px; padding:10px 12px; font-size:13px; max-width:80ch}
+.toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.search{flex:1 1 240px; min-width:0}
+.search input{
+  width:100%; font:inherit; color:var(--ink); background:var(--surface);
+  border:1px solid var(--line); border-radius:6px; padding:9px 12px;
+}
+select{
+  font:inherit; color:var(--ink); background:var(--surface);
+  border:1px solid var(--line); border-radius:6px; padding:9px 10px;
+}
+.toggle, .btn{
+  font:inherit; color:var(--ink2); background:var(--surface); border:1px solid var(--line);
+  border-radius:6px; padding:9px 12px; cursor:pointer;
+}
+.toggle[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+.toggle:hover, .btn:hover{border-color:var(--muted)}
+input:focus-visible, select:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.meta{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; color:var(--muted); font-size:13px}
+.tablewrap{background:var(--surface); border:1px solid var(--line); border-radius:8px; overflow-x:auto}
+table{width:100%; border-collapse:collapse; min-width:760px}
+th, td{padding:10px 12px; text-align:left; vertical-align:middle; border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--hover)}
+th{font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); white-space:nowrap; padding-block:8px}
+th button{
+  all:unset; cursor:pointer; display:inline-flex; gap:6px; align-items:center;
+  text-transform:inherit; letter-spacing:inherit; color:inherit; font:inherit;
+}
+th button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+th[aria-sort="ascending"] button, th[aria-sort="descending"] button{color:var(--ink)}
+.num{font-family:var(--font-num); font-variant-numeric:tabular-nums}
+td.r, th.r{text-align:right}
+.rank{color:var(--muted); width:40px}
+.name{min-width:0; font-weight:500}
+.chips{display:inline-flex; gap:6px; margin-left:8px; vertical-align:1px}
+.chip{font-size:11px; font-weight:500; padding:1px 7px; border-radius:99px; background:var(--accent-soft); color:var(--accent); white-space:nowrap}
+.chip.out{background:transparent; border:1px solid var(--accent)}
+.sjr{display:flex; align-items:center; gap:10px; min-width:160px}
+.sjr .v{width:52px; text-align:right; font-weight:500}
+.track{flex:1; height:6px; border-radius:3px; background:var(--hover)}
+.fill{height:100%; border-radius:3px; background:var(--bar)}
+.empty{padding:36px 16px; text-align:center; color:var(--muted)}
+.foot{color:var(--muted); font-size:12.5px; max-width:80ch; margin:0}
+@media (prefers-reduced-motion: no-preference){ .fill{transition:width .25s ease} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+const { useState, useMemo } = React;
+const html = htm.bind(React.createElement);
+const DATA = [{"j": "American Economic Journal: Microeconomics", "s": 4.257, "q": "Q1", "h": 62, "n": 12, "cpd": 2.14, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Journal", "s": 5.181, "q": "Q1", "h": 205, "n": 73, "cpd": 3.57, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "International Economic Review", "s": 2.751, "q": "Q1", "h": 105, "n": 93, "cpd": 1.73, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "European Economic Review", "s": 2.017, "q": "Q1", "h": 161, "n": 188, "cpd": 2.72, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "RAND Journal of Economics", "s": 4.617, "q": "Q1", "h": 135, "n": 51, "cpd": 2.47, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Law and Economics", "s": 1.592, "q": "Q1", "h": 98, "n": 28, "cpd": 1.58, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Analysis and Policy", "s": 1.966, "q": "Q1", "h": 86, "n": 9, "cpd": 10.58, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Economics and Management Strategy", "s": 1.506, "q": "Q1", "h": 85, "n": 68, "cpd": 2.89, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Industrial Economics", "s": 1.404, "q": "Q1", "h": 92, "n": 27, "cpd": 1.47, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "International Journal of Industrial Organization", "s": 1.449, "q": "Q1", "h": 100, "n": 49, "cpd": 2.04, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Games and Economic Behavior", "s": 1.11, "q": "Q1", "h": 114, "n": 137, "cpd": 1.17, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economics of Innovation and New Technology", "s": 1.024, "q": "Q1", "h": 75, "n": 112, "cpd": 4.31, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Modelling", "s": 1.348, "q": "Q1", "h": 133, "n": 335, "cpd": 6.5, "c": 0, "pub": 1, "ref": 1, "add": 0}, {"j": "International Review of Economics and Finance", "s": 1.485, "q": "Q1", "h": 101, "n": 995, "cpd": 8.27, "c": 0, "pub": 1, "ref": 0, "add": 0}, {"j": "Industrial and Corporate Change", "s": 1.091, "q": "Q1", "h": 137, "n": 60, "cpd": 3.1, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Information Economics and Policy", "s": 1.236, "q": "Q1", "h": 65, "n": 18, "cpd": 2.19, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Law, Economics, and Organization", "s": 1.198, "q": "Q1", "h": 84, "n": 39, "cpd": 2.17, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Economic Behavior and Organization", "s": 1.266, "q": "Q1", "h": 153, "n": 419, "cpd": 3.06, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Theory", "s": 1.233, "q": "Q1", "h": 73, "n": 117, "cpd": 1.34, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Comparative Economics", "s": 1.666, "q": "Q1", "h": 116, "n": 54, "cpd": 4.48, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Scandinavian Journal of Economics", "s": 1.34, "q": "Q1", "h": 82, "n": 34, "cpd": 1.75, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Economic Inquiry", "s": 0.871, "q": "Q1", "h": 93, "n": 71, "cpd": 1.59, "c": 0, "pub": 0, "ref": 1, "add": 0}, {"j": "Review of Industrial Organization", "s": 0.701, "q": "Q2", "h": 69, "n": 52, "cpd": 1.27, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Canadian Journal of Economics", "s": 0.893, "q": "Q2", "h": 85, "n": 56, "cpd": 1.02, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "North American Journal of Economics and Finance", "s": 0.812, "q": "Q2", "h": 73, "n": 208, "cpd": 4.69, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Southern Economic Journal", "s": 0.686, "q": "Q2", "h": 74, "n": 84, "cpd": 1.44, "c": 0, "pub": 0, "ref": 1, "add": 0}, {"j": "Economics Letters", "s": 0.718, "q": "Q2", "h": 142, "n": 554, "cpd": 2.2, "c": 0, "pub": 1, "ref": 0, "add": 0}, {"j": "Journal of Industrial and Business Economics", "s": 0.73, "q": "Q1", "h": 29, "n": 62, "cpd": 3.24, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Annals of Regional Science", "s": 0.752, "q": "Q1", "h": 86, "n": 97, "cpd": 2.79, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Public Economic Theory", "s": 0.386, "q": "Q2", "h": 38, "n": 85, "cpd": 0.94, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Managerial and Decision Economics", "s": 0.671, "q": "Q2", "h": 71, "n": 253, "cpd": 3.28, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Oxford Economic Papers", "s": 0.846, "q": "Q2", "h": 84, "n": 55, "cpd": 2.71, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Applied Economics", "s": 0.624, "q": "Q1", "h": 35, "n": 72, "cpd": 3.28, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "International Economics and Economic Policy", "s": 0.453, "q": "Q3", "h": 34, "n": 65, "cpd": 2.0, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Australian Economic Papers", "s": 0.368, "q": "Q2", "h": 26, "n": 43, "cpd": 1.48, "c": 0, "pub": 0, "ref": 1, "add": 0}, {"j": "Journal of Competition Law and Economics", "s": 1.138, "q": "Q1", "h": 37, "n": 24, "cpd": 1.98, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "International Journal of the Economics of Business", "s": 0.551, "q": "Q2", "h": 42, "n": 27, "cpd": 1.04, "c": 1, "pub": 1, "ref": 1, "add": 0}, {"j": "Journal of Economics (Zeitschrift für Nationalökonomie)", "s": 0.31, "q": "Q3", "h": 40, "n": 36, "cpd": 1.03, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Applied Economics Letters", "s": 0.387, "q": "Q3", "h": 72, "n": 1182, "cpd": 1.78, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Singapore Economic Review", "s": 0.285, "q": "Q3", "h": 34, "n": 192, "cpd": 1.49, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Scottish Journal of Political Economy", "s": 0.396, "q": "Q2", "h": 57, "n": 52, "cpd": 1.36, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Regulatory Economics", "s": 0.341, "q": "Q3", "h": 63, "n": 15, "cpd": 1.59, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Revenue and Pricing Management", "s": 0.262, "q": "Q3", "h": 34, "n": 67, "cpd": 1.38, "c": 0, "pub": 0, "ref": 0, "add": 0}, {"j": "Manchester School", "s": 0.355, "q": "Q3", "h": 49, "n": 39, "cpd": 1.14, "c": 0, "pub": 1, "ref": 1, "add": 0}, {"j": "Journal of Industry, Competition and Trade", "s": 0.434, "q": "Q2", "h": 33, "n": 25, "cpd": 2.43, "c": 1, "pub": 1, "ref": 1, "add": 0}, {"j": "Review of Network Economics", "s": 0.184, "q": "Q4", "h": 20, "n": 6, "cpd": 0.31, "c": 1, "pub": 0, "ref": 0, "add": 0}, {"j": "Journal of Economic Theory", "s": 2.842, "q": "Q1", "h": 124, "n": 105, "cpd": 1.35, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Theoretical Economics", "s": 3.295, "q": "Q1", "h": 43, "n": 40, "cpd": 1.23, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Public Economics", "s": 3.601, "q": "Q1", "h": 192, "n": 170, "cpd": 3.48, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Mathematical Economics", "s": 0.878, "q": "Q1", "h": 49, "n": 70, "cpd": 0.96, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "International Journal of Game Theory", "s": 0.361, "q": "Q2", "h": 51, "n": 48, "cpd": 0.61, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Telecommunications Policy", "s": 1.519, "q": "Q1", "h": 101, "n": 110, "cpd": 8.15, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Utilities Policy", "s": 1.073, "q": "Q1", "h": 72, "n": 175, "cpd": 5.88, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Evolutionary Economics", "s": 0.673, "q": "Q2", "h": 89, "n": 32, "cpd": 2.92, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Economics of Transportation", "s": 0.692, "q": "Q1", "h": 33, "n": 27, "cpd": 3.23, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Quantitative Marketing and Economics", "s": 1.811, "q": "Q1", "h": 41, "n": 16, "cpd": 2.46, "c": 1, "pub": 0, "ref": 0, "add": 1}, {"j": "Small Business Economics", "s": 2.618, "q": "Q1", "h": 196, "n": 209, "cpd": 8.58, "c": 0, "pub": 0, "ref": 0, "add": 1}, {"j": "Journal of Environmental Economics and Management", "s": 2.968, "q": "Q1", "h": 168, "n": 118, "cpd": 7.13, "c": 0, "pub": 1, "ref": 0, "add": 1}, {"j": "Environmental and Resource Economics", "s": 1.377, "q": "Q1", "h": 129, "n": 123, "cpd": 4.23, "c": 0, "pub": 1, "ref": 0, "add": 1}, {"j": "B.E. Journal of Economic Analysis and Policy", "s": 0.301, "q": "Q2", "h": 62, "n": 46, "cpd": 0.68, "c": 0, "pub": 0, "ref": 1, "add": 1}, {"j": "Bulletin of Economic Research", "s": 0.385, "q": "Q3", "h": 39, "n": 56, "cpd": 1.71, "c": 0, "pub": 0, "ref": 1, "add": 1}, {"j": "Journal of Economics and Business", "s": 0.783, "q": "Q1", "h": 65, "n": 29, "cpd": 3.2, "c": 0, "pub": 0, "ref": 1, "add": 1}];
+
+const ranked = DATA.slice().sort((a, b) => b.s - a.s).map((r, i) => ({ ...r, rank: i + 1 }));
+const MAXS = Math.sqrt(Math.max(...ranked.map(r => r.s)));
+
+const BANDS = [
+  ["all", "All SJR", () => true],
+  ["hi", "2.0 and above", r => r.s >= 2],
+  ["mid", "1.0 to 2.0", r => r.s >= 1 && r.s < 2],
+  ["low", "0.5 to 1.0", r => r.s >= 0.5 && r.s < 1],
+  ["vlow", "Below 0.5", r => r.s < 0.5]
+];
+
+const COLS = [
+  { k: "s", label: "SJR 2025", cls: "" },
+  { k: "q", label: "Quartile", cls: "" },
+  { k: "h", label: "h-index", cls: "r" },
+  { k: "cpd", label: "Cites / doc", cls: "r" },
+  { k: "n", label: "Docs 2025", cls: "r" }
+];
+
+function val(r, k) { return k === "q" ? Number(r.q[1]) : r[k]; }
+
+function Sjr({ r }) {
+  const w = (Math.sqrt(r.s) / MAXS) * 100;
+  return html`<div class="sjr">
+    <span class="v num">${r.s.toFixed(3)}</span>
+    <div class="track"><div class="fill" style=${{ width: w + "%" }}></div></div>
+  </div>`;
+}
+
+function App() {
+  const [q, setQ] = useState("");
+  const [band, setBand] = useState("all");
+  const [io, setIo] = useState(false);
+  const [mine, setMine] = useState(false);
+  const [ref, setRef] = useState(false);
+  const [added, setAdded] = useState(false);
+  const [sort, setSort] = useState({ k: "s", dir: "desc" });
+
+  const rows = useMemo(() => {
+    const test = BANDS.find(b => b[0] === band)[2];
+    const needle = q.trim().toLowerCase();
+    const out = ranked.filter(r =>
+      test(r) && (!io || r.c) && (!mine || r.pub) && (!ref || r.ref) && (!added || r.add) &&
+      (!needle || r.j.toLowerCase().includes(needle))
+    );
+    const f = sort.dir === "asc" ? 1 : -1;
+    out.sort((a, b) => {
+      if (sort.k === "j") return f * a.j.localeCompare(b.j);
+      const x = val(a, sort.k), y = val(b, sort.k);
+      return x === y ? a.rank - b.rank : f * (x - y);
+    });
+    return out;
+  }, [q, band, io, mine, ref, added, sort]);
+
+  const setKey = k => setSort(s => s.k === k
+    ? { k, dir: s.dir === "asc" ? "desc" : "asc" }
+    : { k, dir: k === "j" || k === "q" ? "asc" : "desc" });
+
+  const downloadCsv = () => {
+    const esc = s => '"' + String(s).replace(/"/g, '""') + '"';
+    const lines = ["rank,journal,sjr_2025,best_quartile,h_index,docs_2025,cites_per_doc_2y,io_focused,published,refereed,added"].concat(
+      rows.map(r => [r.rank, esc(r.j), r.s, r.q, r.h, r.n, r.cpd, r.c ? 1 : 0, r.pub ? 1 : 0, r.ref ? 1 : 0, r.add ? 1 : 0].join(","))
+    );
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "io_journals_sjr_2025.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  const ariaSort = k => sort.k === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
+  const arrow = k => sort.k === k ? (sort.dir === "asc" ? "▲" : "▼") : "";
+
+  return html`<div class="page">
+    <header>
+      <h1>IO Journal Ranker</h1>
+      <p class="sub">${ranked.length} economics journals for a theoretical industrial organization paper, ranked by SCImago SJR 2025.</p>
+    </header>
+
+    <div class="note">All figures come from the SCImago Journal Rank 2025 file (Scopus data as of March 2026). Quartile is each journal's best quartile across its subject categories. Cites / doc is citations per document over two years.</div>
+
+    <div class="toolbar">
+      <div class="search">
+        <input id="q" type="search" placeholder="Search journals" aria-label="Search journals"
+          value=${q} onInput=${e => setQ(e.target.value)} />
+      </div>
+      <select id="band" aria-label="Filter by SJR range" value=${band} onChange=${e => setBand(e.target.value)}>
+        ${BANDS.map(b => html`<option key=${b[0]} value=${b[0]}>${b[1]}</option>`)}
+      </select>
+      <button class="toggle" aria-pressed=${io} onClick=${() => setIo(v => !v)}>IO-focused</button>
+      <button class="toggle" aria-pressed=${mine} onClick=${() => setMine(v => !v)}>Published here</button>
+      <button class="toggle" aria-pressed=${ref} onClick=${() => setRef(v => !v)}>Refereed for</button>
+      <button class="toggle" aria-pressed=${added} onClick=${() => setAdded(v => !v)}>Newly added</button>
+      <button class="btn" onClick=${downloadCsv}>Download CSV</button>
+    </div>
+
+    <div class="meta">
+      <span>${rows.length} of ${ranked.length} journals</span>
+      <span>Bar length is square-root scaled</span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th class="rank">#</th>
+          <th aria-sort=${ariaSort("j")}><button onClick=${() => setKey("j")}>Journal ${arrow("j")}</button></th>
+          ${COLS.map(c => html`<th key=${c.k} class=${c.cls} aria-sort=${ariaSort(c.k)}>
+            <button onClick=${() => setKey(c.k)}>${c.label} ${arrow(c.k)}</button></th>`)}
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => html`<tr key=${r.j}>
+            <td class="rank num">${r.rank}</td>
+            <td class="name">${r.j}<span class="chips">
+              ${r.c ? html`<span class="chip">IO</span>` : null}
+              ${r.pub ? html`<span class="chip out">Published</span>` : null}
+              ${r.ref ? html`<span class="chip out">Referee</span>` : null}
+              ${r.add ? html`<span class="chip out">New</span>` : null}
+            </span></td>
+            <td><${Sjr} r=${r} /></td>
+            <td><span class="num">${r.q}</span></td>
+            <td class="r num">${r.h}</td>
+            <td class="r num">${r.cpd.toFixed(2)}</td>
+            <td class="r num">${r.n}</td>
+          </tr>`)}
+        </tbody>
+      </table>
+      ${rows.length === 0 ? html`<div class="empty">No journals match. Clear the search or a filter.</div>` : null}
+    </div>
+
+    <p class="foot">"IO-focused" is a judgment about subject scope, not a SCImago category. "New" marks journals added after the first list. "Published" marks journals in your CV\'s refereed publications that are in economics, and "Referee" marks journals on your ad hoc referee list.</p>
+  </div>`;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+</script>
+</body>
+</html>
